@@ -1,0 +1,619 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    CheckCircle,
+    AlertTriangle,
+    Loader2,
+    Pin,
+    Sun,
+    Moon,
+} from 'lucide-react';
+
+// ===============================
+// Types & Interfaces
+// ===============================
+
+interface TodoItem {
+  id: string;
+  text: string;
+  completed: boolean;
+  priority: 'high' | 'medium' | 'low';
+  pinned: boolean;
+  date: string;
+}
+
+interface NoteItem {
+  id: string;
+  title: string;
+  text: string;
+  pinned: boolean;
+  date: string;
+}
+
+// ===============================
+// Animation Variants
+// ===============================
+
+const todoVariants = {
+  hidden: { opacity: 0, y: -10 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+  exit: { opacity: 0, y: 10, transition: { duration: 0.2 } },
+};
+
+const noteVariants = {
+  hidden: { opacity: 0, y: -10 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+  exit: { opacity: 0, y: 10, transition: { duration: 0.2 } },
+};
+
+// ===============================
+// Helper Functions
+// ===============================
+
+const generateId = () => crypto.randomUUID();
+const getFormattedDate = () => {
+    const today = new Date();
+    return today.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+    });
+};
+
+// ===============================
+// Sub-Components
+// ===============================
+
+const TodoInput = ({ onAdd }: { onAdd: (text: string, priority: 'high' | 'medium' | 'low') => void }) => {
+  const [text, setText] = useState('');
+  const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleAdd = async () => {
+    if (!text.trim()) return;
+    setIsLoading(true);
+    // Simulate network latency (remove in production)
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    onAdd(text, priority);
+    setText('');
+    setIsLoading(false);
+  };
+
+  return (
+    <div className="flex flex-col sm:flex-row gap-4">
+      <Input
+        type="text"
+        placeholder="Add a new todo..."
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        className="flex-1 bg-input text-foreground"
+        disabled={isLoading}
+      />
+      <Select
+        value={priority}
+        onValueChange={(value) => setPriority(value as 'high' | 'medium' | 'low')}
+      >
+        <SelectTrigger className="w-[180px] bg-input text-foreground">
+          <SelectValue placeholder="Priority" className="text-foreground" />
+        </SelectTrigger>
+        <SelectContent className="bg-popover text-popover-foreground">
+          <SelectItem value="high" className="hover:bg-accent hover:text-accent-foreground">High</SelectItem>
+          <SelectItem value="medium" className="hover:bg-accent hover:text-accent-foreground">Medium</SelectItem>
+          <SelectItem value="low" className="hover:bg-accent hover:text-accent-foreground">Low</SelectItem>
+        </SelectContent>
+      </Select>
+      <Button
+        onClick={handleAdd}
+        disabled={isLoading || !text.trim()}
+        className="min-w-[120px] bg-primary text-primary-foreground hover:bg-primary/90"
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Adding...
+          </>
+        ) : (
+          'Add Todo'
+        )}
+      </Button>
+    </div>
+  );
+};
+
+const TodoItemComponent = ({
+    todo,
+    onDelete,
+    onToggleComplete,
+    onEdit,
+    isEditMode,
+    onPin
+}: {
+    todo: TodoItem;
+    onDelete: (id: string) => void;
+    onToggleComplete: (id: string) => void;
+    onEdit: (id: string, newText: string) => void;
+    isEditMode: boolean;
+    onPin: (id: string, pinned: boolean) => void;
+}) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(todo.text);
+
+    const handleEdit = () => {
+        if (isEditing) {
+            onEdit(todo.id, editText.trim());
+        }
+        setIsEditing(!isEditing);
+    };
+
+    useEffect(() => {
+      setEditText(todo.text);
+    }, [todo.text])
+
+
+    return (
+        <motion.li
+            variants={todoVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className={cn(
+                'flex items-center gap-4 p-4 rounded-lg',
+                'bg-card shadow-md transition-all duration-200',
+                'border border-transparent',
+                todo.completed
+                    ? 'opacity-50 line-through text-muted-foreground'
+                    : 'hover:border-border',
+                'text-foreground' // Added text color
+            )}
+        >
+            <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onToggleComplete(todo.id)}
+                className={cn(
+                    'rounded-full w-10 h-10',
+                    todo.completed
+                        ? 'text-green-500'
+                        : 'text-gray-500 hover:text-blue-500'
+                )}
+                aria-label={todo.completed ? 'Mark as incomplete' : 'Mark as complete'}
+            >
+                {todo.completed ? (
+                    <CheckCircle className="w-6 h-6" />
+                ) : (
+                    <div className="w-6 h-6 rounded-full border-2 border-gray-500" />
+                )}
+            </Button>
+
+            {isEditing && isEditMode ? (
+                <Input
+                    type="text"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    className="flex-1 bg-input text-foreground"
+                    onBlur={handleEdit}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            handleEdit();
+                        } else if (e.key === 'Escape') {
+                            setIsEditing(false);
+                            setEditText(todo.text);
+                        }
+                    }}
+                    autoFocus
+                />
+            ) : (
+                <span className="flex-1">{todo.text}</span>
+            )}
+
+            <span
+                className={cn(
+                    'px-2 py-1 rounded-full text-xs font-medium',
+                    todo.priority === 'high' && 'bg-red-500/20 text-red-400',
+                    todo.priority === 'medium' && 'bg-yellow-500/20 text-yellow-400',
+                    todo.priority === 'low' && 'bg-green-500/20 text-green-400'
+                )}
+            >
+                {todo.priority}
+            </span>
+            <span className="text-xs text-muted-foreground">{todo.date}</span>
+            <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onPin(todo.id, !todo.pinned)}
+                className={cn(
+                    "text-gray-500 hover:text-yellow-500",
+                    todo.pinned && "text-yellow-500"
+                )}
+                aria-label={todo.pinned ? "Unpin" : "Pin"}
+            >
+                <Pin className="w-5 h-5" />
+            </Button>
+            {isEditMode && (
+                <>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEdit()}
+                    className="text-gray-500 hover:text-blue-500"
+                    aria-label={isEditing ? 'Save' : 'Edit'}
+                >
+                    {isEditing ? (
+                        <CheckCircle className="w-5 h-5" />
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
+                        </svg>
+                    )}
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onDelete(todo.id)}
+                    className="text-gray-500 hover:text-red-500"
+                    aria-label="Delete"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                    </svg>
+                </Button>
+                </>
+            )}
+        </motion.li>
+    );
+};
+
+const NoteItemComponent = ({
+    note,
+    onDelete,
+    onEdit,
+    isEditMode,
+    onPin
+}: {
+    note: NoteItem;
+    onDelete: (id: string) => void;
+    onEdit: (id: string, newText: string, newTitle: string) => void;
+    isEditMode: boolean;
+    onPin: (id: string, pinned: boolean) => void;
+}) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(note.text);
+    const [editTitle, setEditTitle] = useState(note.title);
+
+
+    const handleEdit = () => {
+        if (isEditing) {
+            onEdit(note.id, editText.trim(), editTitle.trim());
+        }
+        setIsEditing(!isEditing);
+    };
+
+    useEffect(() => {
+        setEditText(note.text);
+        setEditTitle(note.title);
+    }, [note.text, note.title]);
+
+    return (
+        <motion.li
+            variants={noteVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className={cn(
+                'flex flex-col gap-2 p-4 rounded-lg',
+                'bg-card shadow-md transition-all duration-200',
+                'border border-transparent',
+                'hover:border-border',
+                'text-foreground' // Added text color
+            )}
+        >
+            <div className="flex items-start gap-4">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onPin(note.id, !note.pinned)}
+                    className={cn(
+                        "mt-1 text-gray-500 hover:text-yellow-500",
+                        note.pinned && "text-yellow-500"
+                    )}
+                    aria-label={note.pinned ? "Unpin" : "Pin"}
+                >
+                    <Pin className="w-5 h-5" />
+                </Button>
+                {isEditing && isEditMode ? (
+                    <Input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="flex-1 text-lg font-semibold bg-input text-foreground"
+                        placeholder="Note Title"
+                        onBlur={handleEdit}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                handleEdit();
+                            } else if (e.key === 'Escape') {
+                                setIsEditing(false);
+                                setEditTitle(note.title);
+                                setEditText(note.text);
+                            }
+                        }}
+                        autoFocus
+                    />
+                ) : (
+                    <h4 className="flex-1 text-lg font-semibold">{note.title}</h4>
+                )}
+            </div>
+            {isEditing && isEditMode ? (
+                <Textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    className="flex-1 bg-input text-foreground"
+                    onBlur={handleEdit}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) { // Shift+Enter for new line
+                            e.preventDefault(); // prevent default Enter behavior (form submit)
+                            handleEdit();
+                        } else if (e.key === 'Escape') {
+                            setIsEditing(false);
+                            setEditTitle(note.title);
+                            setEditText(note.text);
+                        }
+                    }}
+                    autoFocus
+                    rows={3}
+                />
+            ) : (
+                <span className="flex-1 whitespace-pre-wrap">{note.text}</span>
+            )}
+            <span className="text-xs text-muted-foreground">{note.date}</span>
+            {isEditMode && (
+                <div className="flex justify-end">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit()}
+                        className="text-gray-500 hover:text-blue-500 mt-1"
+                        aria-label={isEditing ? 'Save' : 'Edit'}
+                    >
+                        {isEditing ? (
+                            <CheckCircle className="w-5 h-5" />
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
+                            </svg>
+                        )}
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDelete(note.id)}
+                        className="text-gray-500 hover:text-red-500 mt-1"
+                        aria-label="Delete"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                        </svg>
+                    </Button>
+                </div>
+            )}
+        </motion.li>
+    );
+};
+
+const NoteInput = ({ onAdd }: { onAdd: (text: string, title: string) => void }) => {
+    const [text, setText] = useState('');
+    const [title, setTitle] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleAdd = async () => {
+        if (!text.trim() || !title.trim()) return;
+        setIsLoading(true);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        onAdd(text, title);
+        setText('');
+        setTitle('');
+        setIsLoading(false);
+    };
+
+    return (
+        <div className="flex flex-col gap-4">
+            <Input
+                placeholder="Note Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="text-lg font-semibold bg-input text-foreground"
+                disabled={isLoading}
+            />
+            <Textarea
+                placeholder="Add a new note..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                className="flex-1 bg-input text-foreground"
+                disabled={isLoading}
+                rows={3}
+            />
+            <Button
+                onClick={handleAdd}
+                disabled={isLoading || !text.trim() || !title.trim()}
+                className="min-w-[120px] self-start bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+                {isLoading ? (
+                    <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                    </>
+                ) : (
+                    'Add Note'
+                )}
+            </Button>
+        </div>
+    );
+};
+
+// ===============================
+// Main Component
+// ===============================
+
+const TodoApp = () => {
+  const [todos, setTodos] = useState<TodoItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      const savedTodos = localStorage.getItem('todos');
+      try {
+        return savedTodos ? JSON.parse(savedTodos) : [];
+      } catch (error) {
+        console.error('Failed to parse saved todos:', error);
+        return [];
+      }
+    }
+    return [];
+  });
+    const [notes, setNotes] = useState<NoteItem[]>(() => {
+        if (typeof window !== 'undefined') {
+            const savedNotes = localStorage.getItem('notes');
+            try {
+                return savedNotes ? JSON.parse(savedNotes) : [];
+            } catch (error) {
+                console.error('Failed to parse saved notes:', error);
+                return [];
+            }
+        }
+        return [];
+    });
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark'); // Default to dark
+
+    // Function to toggle the theme
+    const toggleTheme = () => {
+        setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+    };
+
+    // Apply theme to the document
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            document.body.classList.toggle('dark', theme === 'dark');
+            localStorage.setItem('theme', theme); // Save theme
+        }
+    }, [theme]);
+
+    // Load theme from localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) {
+                setTheme(savedTheme as 'light' | 'dark');
+            } else {
+              setTheme('dark');
+            }
+        }
+    }, []);
+
+  // Load todos from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedTodos = localStorage.getItem('todos');
+      if (savedTodos) {
+        try {
+          setTodos(JSON.parse(savedTodos));
+        } catch (error) {
+          console.error("Error parsing todos from localStorage", error);
+          setTodos([]);
+        }
+      }
+    }
+  }, []);
+
+    // Load notes from localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const savedNotes = localStorage.getItem('notes');
+            if (savedNotes) {
+                try {
+                    setNotes(JSON.parse(savedNotes));
+                } catch (error) {
+                    console.error("Error parsing notes from localStorage", error);
+                    setNotes([]);
+                }
+            }
+        }
+    }, []);
+
+  // Save todos to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('todos', JSON.stringify(todos));
+    }
+  }, [todos]);
+
+    // Save notes to localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('notes', JSON.stringify(notes));
+        }
+    }, [notes]);
+
+  const addTodo = useCallback((text: string, priority: 'high' | 'medium' | 'low') => {
+    const newTodo: TodoItem = {
+      id: generateId(),
+      text,
+      completed: false,
+      priority,
+      pinned: false,
+      date: getFormattedDate(),
+    };
+    setTodos((prevTodos) => [...prevTodos, newTodo]);
+  }, []);
+
+    const addNote = useCallback((text: string, title: string) => {
+        const newNote: NoteItem = {
+            id: generateId(),
+            title,
+            text,
+            pinned: false,
+            date: getFormattedDate(),
+        };
+        setNotes(prevNotes => [...prevNotes, newNote]);
+    }, []);
+
+  const deleteTodo = useCallback((id: string) => {
+    setTodos((prevTodos) => prevTodos.filter((todo) => todo.id !== id));
+  }, []);
+
+    const deleteNote = useCallback((id: string) => {
+        setNotes(prevNotes => prevNotes.filter(note => note.id !== id));
+    }, []);
+
+  const toggleComplete = useCallback((id: string) => {
+    setTodos((prevTodos) =>
+      prevTodos.map((todo) =>
+        todo.id === id ? { ...todo, completed: !todo.completed } : todo
+      )
+    );
+  }, []);
+
+    const editTodo = useCallback((id: string, newText: string) => {
+        if (!newText.trim()) {
+            deleteTodo(id);
+            return;
+        }
+        setTodos(prevTodos =>
+            prevTodos.map(todo =>
+                todo.id === id ? { ...todo, text: 
